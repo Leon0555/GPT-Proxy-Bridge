@@ -21,6 +21,58 @@ await Test("hot switch preserves old tunnels",async()=>{
     using var fresh=await Tunnel(engine);Assert(await Echo(fresh.GetStream(),"new")=="Bnew");Assert(await Echo(old.GetStream(),"old")=="Aold");Assert(engine.Status.OldConnections==1);Assert(engine.Status.Connections==2);
     engine.Apply(Profile(a,true),"pass");using var newest=await Tunnel(engine);Assert(await Echo(newest.GetStream(),"last")=="Alast");Assert(await Echo(fresh.GetStream(),"still")=="Bstill");engine.Stop();
 });
+
+int RevisionEntries(BridgeEngine engine) =>
+    ((System.Collections.Concurrent.ConcurrentDictionary<long,int>)typeof(BridgeEngine)
+        .GetField("counts",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!
+        .GetValue(engine)!).Count;
+async Task Eventually(Func<bool> condition) {
+    using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    while(!condition())await Task.Delay(5,deadline.Token);
+}
+await Test("frequent switches reclaim revisions while preserving old connections",async()=>{
+    using var a=new Mock(ProxyProtocol.HTTP,true,"A");
+    using var b=new Mock(ProxyProtocol.SOCKS5,true,"B");
+    using var engine=new BridgeEngine();
+    engine.Apply(Profile(a,true),"pass");engine.Start(0);
+    using var original=await Tunnel(engine);
+    for(int i=0;i<100;i++){
+        var proxy=i%2==0?b:a;var marker=i%2==0?"B":"A";
+        engine.Apply(Profile(proxy,true),"pass");
+        var batch=await Task.WhenAll(Enumerable.Range(0,8).Select(_=>Tunnel(engine)));
+        try {
+            Assert(engine.Status.Connections==9);
+            Assert(engine.Status.OldConnections==1);
+            await Task.WhenAll(batch.Select(async c=>Assert(await Echo(c.GetStream(),"x")==marker+"x")));
+        } finally {foreach(var c in batch)c.Dispose();}
+        await Eventually(()=>engine.Status.Connections==1 && RevisionEntries(engine)==1);
+        Assert(RevisionEntries(engine)==1,"Completed revisions must be removed");
+        Assert(await Echo(original.GetStream(),"old")=="Aold");
+    }
+    original.Dispose();
+    await Eventually(()=>engine.Status.Connections==0 && RevisionEntries(engine)==0);
+});
+await Test("concurrent accept and close never lose active revision counts",async()=>{
+    using var mock=new Mock(ProxyProtocol.HTTP,false,"A");
+    using var engine=new BridgeEngine();engine.Apply(Profile(mock),"");engine.Start(0);
+    // Repeatedly race the last closes against new accepts for the same revision.
+    for(int round=0;round<50;round++){
+        var closing=await Task.WhenAll(Enumerable.Range(0,8).Select(_=>Tunnel(engine)));
+        var opening=Enumerable.Range(0,8).Select(_=>Tunnel(engine)).ToArray();
+        await Task.WhenAll(closing.Select(c=>Task.Run(()=>c.Dispose())));
+        var active=await Task.WhenAll(opening);
+        try {
+            await Eventually(()=>engine.Status.Connections==active.Length);
+            Assert(RevisionEntries(engine)==1);
+            await Task.WhenAll(active.Select(async c=>Assert(await Echo(c.GetStream(),"live")=="Alive")));
+        } finally {foreach(var c in active)c.Dispose();}
+        await Eventually(()=>engine.Status.Connections==0 && RevisionEntries(engine)==0);
+    }
+    var stopped=await Task.WhenAll(Enumerable.Range(0,8).Select(_=>Tunnel(engine)));
+    engine.Stop();
+    await Eventually(()=>engine.Status.Connections==0 && RevisionEntries(engine)==0);
+    foreach(var c in stopped)c.Dispose();
+});
 await Test("bad upstream produces 502 without direct fallback",async()=>{using var mock=new Mock(ProxyProtocol.HTTP,true,"A");using var engine=new BridgeEngine();engine.Apply(Profile(mock,true),"wrong");engine.Start(0);using var client=new TcpClient();await client.ConnectAsync(IPAddress.Loopback,engine.Status.Port);await Wire.Write(client.GetStream(),"CONNECT example.com:443 HTTP/1.1\r\n\r\n",default);Assert(Wire.Status(await Wire.Header(client.GetStream(),default))==502);});
 await Test("port conflict refuses second listener",()=>{using var mock=new Mock(ProxyProtocol.HTTP,false,"A");using var a=new BridgeEngine();using var b=new BridgeEngine();a.Apply(Profile(mock),"");a.Start(0);b.Apply(Profile(mock),"");try{b.Start(a.Status.Port);throw new Exception("port stolen");}catch(SocketException){}return Task.CompletedTask;});
 foreach(bool chunked in new[]{false,true})await Test("HTTP upload streaming chunked="+chunked,async()=>{using var mock=new Mock(ProxyProtocol.HTTP,false,"A");using var engine=new BridgeEngine();engine.Apply(Profile(mock),"");engine.Start(0);using var client=new TcpClient();await client.ConnectAsync(IPAddress.Loopback,engine.Status.Port);string body=chunked?"5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n":"hello world";await Wire.Write(client.GetStream(),"POST http://example.com/upload HTTP/1.1\r\nHost: example.com\r\n"+(chunked?"Transfer-Encoding: chunked":"Content-Length: 11")+"\r\n\r\n"+body,default);string head=await Wire.Header(client.GetStream(),default);Assert(Wire.Status(head)==200);using var reader=new StreamReader(client.GetStream());Assert(await reader.ReadToEndAsync()=="hello world");Assert(mock.LastBody=="hello world");});

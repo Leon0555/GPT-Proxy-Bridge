@@ -1,13 +1,18 @@
-# GPT Proxy Bridge 1.0.7
+# GPT Proxy Bridge 1.0.8
 
 Windows x64 代理配置管理与桌面应用启动工具，中文界面，MIT 代码许可证。
 
 ## 下载与使用
-下载 GPT-Proxy-Bridge-1.0.7-win-x64.zip，解压后运行 GPT Proxy Bridge.exe，无需安装 .NET 或 Python。
+下载 GPT-Proxy-Bridge-1.0.8-win-x64.zip，解压后运行 GPT Proxy Bridge.exe，无需安装 .NET 或 Python。
 SHA256SUMS.txt 可用于核对下载文件。GitHub 自动提供的 Source code 压缩包是源码，不是可直接运行的程序。
 
 需要自行准备可用的 HTTP、HTTPS 或 SOCKS5 代理，并安装支持的 ChatGPT/Codex 桌面端。
 首次接入应完全退出目标应用，再从管理器连接并启动。自动发现针对 OpenAI.Codex 安装包。
+
+## 本次修复
+- 清理连接数归零的版本记录，避免长期频繁切换导致计数字典增长。
+- 原子条件删除保留并发新连接计数；旧连接继续使用原配置。
+- 其余功能未修改。
 
 ## 功能
 - 可选账号密码认证、多配置保存与切换。
@@ -17,7 +22,7 @@ SHA256SUMS.txt 可用于核对下载文件。GitHub 自动提供的 Source code 
 - 大桥、锁链、小飞机图标；名称 GPT Proxy Bridge。
 
 ## 验证与边界
-本机发布前 38 项核心、安装发现和界面/模拟启动检查通过；GitHub 构建运行 18 项不依赖个人环境的核心测试。
+本次本机 20 项核心测试通过，包括新增的 100 次切换和 50 轮并发建连/断连回归。GitHub 构建将再次运行这 20 项测试。此前 1.0.7 的界面与安装发现验证属于历史结果，本次未重复运行。
 尚未完成干净电脑、真实应用全部业务流量、可信 HTTPS 上游完整矩阵及多 DPI/长期压力验收。
 401 测试结果只表示测试 HTTPS 通路可达，不代表账号登录或全部业务可用。
 本工具不提供代理节点、不做 VPN/TUN、不强制接管所有工具流量。

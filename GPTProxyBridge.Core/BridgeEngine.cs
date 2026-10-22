@@ -92,7 +92,12 @@ public sealed class BridgeEngine : IDisposable
         } catch(Exception ex) when(ex is not OutOfMemoryException) {
             if(!ct.IsCancellationRequested) Error?.Invoke(Upstream.Friendly(ex));
             if(!responded && client.Connected)try{await Wire.Write(client.GetStream(),"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",ct);}catch{}
-        } finally {client.Dispose();clients.TryRemove(id,out _);counts.AddOrUpdate(snapshot.Revision,0,(_,n)=>Math.Max(0,n-1));}
+        } finally {
+            client.Dispose();clients.TryRemove(id,out _);
+            if(counts.AddOrUpdate(snapshot.Revision,0,(_,n)=>Math.Max(0,n-1))==0)
+                // Match the value atomically: a new accept may have incremented it already.
+                counts.TryRemove(new KeyValuePair<long,int>(snapshot.Revision,0));
+        }
     }
     public void Stop() {lifetime?.Cancel();listener?.Stop();listener=null;foreach(var client in clients.Values) client.Dispose();lifetime?.Dispose();lifetime=null;}
     public void Dispose()=>Stop();
