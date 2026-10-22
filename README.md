@@ -129,5 +129,5 @@ dotnet publish .\GPTProxyBridge.App\GPTProxyBridge.App.csproj -c Release -r win-
 
 ## 许可证与品牌
 
-代码使用 MIT，见 LICENSE。当前图标采用大桥、锁链和小飞机，不含 ChatGPT 标志。第三方名称和商标不因代码许可证获得授权；本项目保持独立第三方身份。
+代码使用 MIT，见 LICENSE。
 
