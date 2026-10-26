@@ -90,7 +90,7 @@ public sealed class BridgeEngine : IDisposable
                 }
             }
         } catch(Exception ex) when(ex is not OutOfMemoryException) {
-            if(!ct.IsCancellationRequested) Error?.Invoke(Upstream.Friendly(ex));
+            if(!ct.IsCancellationRequested) Error?.Invoke(ConnectionError(ex));
             if(!responded && client.Connected)try{await Wire.Write(client.GetStream(),"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",ct);}catch{}
         } finally {
             client.Dispose();clients.TryRemove(id,out _);
@@ -98,6 +98,13 @@ public sealed class BridgeEngine : IDisposable
                 // Match the value atomically: a new accept may have incremented it already.
                 counts.TryRemove(new KeyValuePair<long,int>(snapshot.Revision,0));
         }
+    }
+    static string ConnectionError(Exception error)
+    {
+        for(Exception? cause=error;cause!=null;cause=cause.InnerException)
+            if(cause is SocketException {SocketErrorCode:SocketError.ConnectionReset})
+                return "一个现有连接被对端重置；本地桥接继续运行";
+        return Upstream.Friendly(error);
     }
     public void Stop() {lifetime?.Cancel();listener?.Stop();listener=null;foreach(var client in clients.Values) client.Dispose();lifetime?.Dispose();lifetime=null;}
     public void Dispose()=>Stop();
