@@ -20,8 +20,8 @@ public partial class MainWindow : Window
     void ShowPassword(object sender,RoutedEventArgs e){SecretBox.Visibility=Visibility.Collapsed;PlainSecret.Visibility=Visibility.Visible;}
     void HidePassword(object sender,RoutedEventArgs e){if(SecretBox==null)return;SecretBox.Visibility=Visibility.Visible;PlainSecret.Visibility=Visibility.Collapsed;}
     void ProfileClicked(object sender,System.Windows.Input.MouseButtonEventArgs e)
-    {if(sender is ListBoxItem {IsSelected:true})vm.SettingsVisible=false;}
+    {if(sender is ListBoxItem {IsSelected:true,DataContext:GPTProxyBridge.Core.ProxyProfile profile} && vm.Selected?.Id==profile.Id)vm.SettingsVisible=false;}
     void ProfileKeyDown(object sender,System.Windows.Input.KeyEventArgs e)
     {if(e.Key is System.Windows.Input.Key.Enter or System.Windows.Input.Key.Space && sender is ListBoxItem {IsSelected:true})vm.SettingsVisible=false;}
-    void BrowseApp(object sender,RoutedEventArgs e){var dialog=new Microsoft.Win32.OpenFileDialog{Title="选择 ChatGPT/Codex应用",Filter="ChatGPT/Codex可执行文件|*.exe"};if(dialog.ShowDialog()==true){vm.AppPath=dialog.FileName;DataContext=null;DataContext=vm;}}
+    void BrowseApp(object sender,RoutedEventArgs e){var dialog=new Microsoft.Win32.OpenFileDialog{Title="选择 ChatGPT/Codex应用",Filter="ChatGPT/Codex可执行文件|*.exe"};if(dialog.ShowDialog()==true){vm.AppPath=dialog.FileName;}}
 }

@@ -3,6 +3,11 @@ using System.Globalization;
 using System.Windows.Data;
 
 namespace GPTProxyBridge.App;
+public sealed class ThemeModeConverter : IValueConverter
+{
+    public object Convert(object value,Type targetType,object parameter,CultureInfo culture)=>Equals(value,parameter);
+    public object ConvertBack(object value,Type targetType,object parameter,CultureInfo culture)=>value is true ? parameter : Binding.DoNothing;
+}
 public sealed class ThemeLabel : IValueConverter
 {
     public object Convert(object value,Type targetType,object parameter,CultureInfo culture)=>value?.ToString() switch {"System"=>"跟随系统","Light"=>"浅色","Dark"=>"深色",_=>value??""};

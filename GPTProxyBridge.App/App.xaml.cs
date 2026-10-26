@@ -37,7 +37,7 @@ public partial class App : Application
         } catch(Exception ex){MessageBox.Show(ex.Message,"GPT Proxy Bridge 启动失败");Shutdown(1);}
     }
     void ShowWindow(){MainWindow.Show();MainWindow.WindowState=WindowState.Normal;MainWindow.Activate();}
-    void ExitApp(){if(vm?.Busy==true){MessageBox.Show("连接操作正在进行，请稍候再退出。","GPT Proxy Bridge");return;}if(vm!=null&&!vm.Stop())return;Exiting=true;tray?.Dispose();Shutdown();}
+    void ExitApp(){if(vm?.Busy==true){MessageBox.Show("连接操作正在进行，请稍候再退出。","GPT Proxy Bridge");return;}if(vm!=null&&(!vm.PrepareExit()||!vm.Stop()))return;Exiting=true;tray?.Dispose();Shutdown();}
     protected override void OnExit(ExitEventArgs e){tray?.Dispose();vm?.Engine.Dispose();wake?.Dispose();mutex?.Dispose();base.OnExit(e);}
     public void SetTheme(string choice)
     {
@@ -45,6 +45,8 @@ public partial class App : Application
         var colors=dark?new[]{"#1C1C1F","#242427","#2C2C30","#F1F1F4","#AFB0BA","#45454D","#3785F7"}:new[]{"#F6F6F8","#ECECF0","#FFFFFF","#202126","#626570","#DCDDE3","#146EF5"};
         string[] keys=["BackgroundBrush","SidebarBrush","CardBrush","TextBrush","MutedBrush","LineBrush","AccentBrush"];
         for(int i=0;i<keys.Length;i++)Resources[keys[i]]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors[i]));
-        if(SystemParameters.HighContrast){Resources["BackgroundBrush"]=SystemColors.WindowBrush;Resources["SidebarBrush"]=SystemColors.WindowBrush;Resources["CardBrush"]=SystemColors.WindowBrush;Resources["TextBrush"]=SystemColors.WindowTextBrush;Resources["MutedBrush"]=SystemColors.WindowTextBrush;Resources["LineBrush"]=SystemColors.WindowTextBrush;Resources["AccentBrush"]=SystemColors.HighlightBrush;}
+        Resources["SuccessBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#62D98C":"#17733A"));
+        Resources["WarningBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#F4C36B":"#8A5A00"));
+        if(SystemParameters.HighContrast){Resources["BackgroundBrush"]=SystemColors.WindowBrush;Resources["SidebarBrush"]=SystemColors.WindowBrush;Resources["CardBrush"]=SystemColors.WindowBrush;Resources["TextBrush"]=SystemColors.WindowTextBrush;Resources["MutedBrush"]=SystemColors.WindowTextBrush;Resources["LineBrush"]=SystemColors.WindowTextBrush;Resources["AccentBrush"]=SystemColors.HighlightBrush;Resources["SuccessBrush"]=SystemColors.WindowTextBrush;Resources["WarningBrush"]=SystemColors.WindowTextBrush;}
     }
 }
