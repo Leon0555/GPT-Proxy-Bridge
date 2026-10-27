@@ -87,7 +87,10 @@ internal static partial class Program
             var originalBorder=combo.BorderBrush;combo.BorderBrush=System.Windows.Media.Brushes.Magenta;Pump();
             Check(box.BorderBrush==System.Windows.Media.Brushes.Magenta,"protocol dropdown visible border follows focus brush");
             combo.BorderBrush=originalBorder;Pump();
-            Check(All<TextBlock>(combo).Any(t=>t.Text=="⌄" && t.Foreground.ToString()==app.Resources["TextBrush"].ToString()),"protocol dropdown arrow follows theme text color");
+            var arrow=(System.Windows.Shapes.Path)toggle.Template.FindName("ProtocolArrow",toggle);
+            Check(arrow.Stroke.ToString()==app.Resources["TextBrush"].ToString()
+                && Math.Abs(arrow.TranslatePoint(new Point(0,arrow.ActualHeight/2),box).Y-box.ActualHeight/2)<0.5,
+                "protocol dropdown arrow is vertically centered and follows theme text color");
             var eye=(System.Windows.Controls.Primitives.ToggleButton)window.FindName("PasswordReveal");
             var masked=(PasswordBox)window.FindName("SecretBox");
             var plain=(TextBox)window.FindName("PlainSecret");
@@ -105,6 +108,9 @@ internal static partial class Program
                 modes.Single(b=>Equals(b.Tag,mode)).SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty,true);Pump();
                 Check(vm.Theme==mode && new ConfigurationStore(directory).Load().Settings.Theme==mode
                     && All<RadioButton>(window).Count(b=>Equals(b.Tag,mode)&&b.IsChecked==true)==2,"appearance "+mode+" persists and synchronizes both locations");
+                Check(arrow.Stroke.ToString()==app.Resources["TextBrush"].ToString()
+                    && Math.Abs(arrow.TranslatePoint(new Point(0,arrow.ActualHeight/2),box).Y-box.ActualHeight/2)<0.5,
+                    "protocol dropdown arrow remains centered and visible in "+mode);
             }
             var runtime=(TextBlock)window.FindName("RuntimeLabel");
             vm.Busy=false;vm.Refresh();Pump();
