@@ -8,7 +8,7 @@ using System.Windows.Threading;
 using GPTProxyBridge.App;
 using GPTProxyBridge.Core;
 
-internal static class Program
+internal static partial class Program
 {
     [STAThread]
     static int Main()
@@ -160,6 +160,7 @@ internal static class Program
             var timeoutBox=FindNamed(window,"连接超时")!;
             Check(Math.Abs(portBox.TranslatePoint(new Point(),window).X-timeoutBox.TranslatePoint(new Point(),window).X)<1 && Math.Abs(portBox.ActualWidth-timeoutBox.ActualWidth)<1,"port and timeout input edges align");
             StateRegression(directory);
+            UpdateRegression(directory);
             var fixture=Environment.GetEnvironmentVariable("GPT_PB_FIXTURE_EXE");
             if(string.IsNullOrEmpty(fixture))throw new Exception("Set GPT_PB_FIXTURE_EXE to the built launch fixture.");
             var fixtureDirectory=Path.Combine(directory,"launch");

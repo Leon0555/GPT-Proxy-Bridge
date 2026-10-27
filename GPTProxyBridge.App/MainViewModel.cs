@@ -70,10 +70,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public Guid? ActiveProfileId=>Engine.Status.Running?activeId:null;
     public Guid? DefaultProfileId=>Data.Settings.DefaultProfileId;
     public ICommand OpenAppCommand{get;} public ICommand AddCommand{get;} public ICommand SaveCommand{get;} public ICommand DuplicateCommand{get;} public ICommand DeleteCommand{get;} public ICommand DefaultCommand{get;} public ICommand TestCommand{get;} public ICommand ApplyCommand{get;} public ICommand LaunchCommand{get;} public ICommand StopCommand{get;} public ICommand SettingsCommand{get;} public ICommand SaveSettingsCommand{get;} public ICommand ImportCommand{get;} public ICommand ExportCommand{get;}
-    public MainViewModel(string directory, Func<string,MessageBoxResult>? confirmUnsaved=null, Func<ProxySnapshot,Task<ProbeResult>>? probe=null)
+    public MainViewModel(string directory, Func<string,MessageBoxResult>? confirmUnsaved=null, Func<ProxySnapshot,Task<ProbeResult>>? probe=null, Func<Task<UpdateCheckResult>>? updateCheck=null)
     {
         this.confirmUnsaved=confirmUnsaved ?? (text=>MessageBox.Show(text,"未保存的配置",MessageBoxButton.YesNoCancel,MessageBoxImage.Question));
         this.probe=probe ?? (snapshot=>Upstream.Probe(snapshot));
+        this.updateCheck=updateCheck ?? (()=>new UpdateChecker().CheckAsync());
         store=new(directory);Data=store.Load();foreach(var p in Data.Profiles)Profiles.Add(p);
         Results.CollectionChanged+=(_,_)=>Notify(nameof(HasTestFeedback));
         LocalPort=Data.Settings.LocalPort.ToString();Bypass=Data.Settings.Bypass;AppPath=Data.Settings.AppPath;theme=Data.Settings.Theme;
@@ -100,6 +101,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         StopCommand=new AsyncCommand(()=>{Stop();return Task.CompletedTask;},()=>Available && Engine.Status.Running);
         SettingsCommand=new AsyncCommand(()=>{SettingsVisible=true;return Task.CompletedTask;},()=>Available);
         SaveSettingsCommand=new AsyncCommand(()=>{SaveSettings();return Task.CompletedTask;},()=>Available && SettingsDirty);
+        CheckUpdatesCommand=new AsyncCommand(()=>CheckForUpdates(true),()=>!UpdateChecking);
         ImportCommand=new AsyncCommand(async()=>{if(TryLeaveEditor("导入配置"))await Run(Import);},()=>Available);
         ExportCommand=new AsyncCommand(()=>{var dialog=new Microsoft.Win32.SaveFileDialog{Filter="JSON 配置|*.json",FileName="GPT-Proxy-Bridge-profiles.json"};if(dialog.ShowDialog()==true){var safe=new Configuration{Profiles=Profiles.Select(x=>x with{CredentialReference=""}).ToList(),Settings=new AppSettings{DefaultProfileId=Data.Settings.DefaultProfileId,LocalPort=Data.Settings.LocalPort,Bypass=Data.Settings.Bypass}};File.WriteAllText(dialog.FileName,System.Text.Json.JsonSerializer.Serialize(safe,new System.Text.Json.JsonSerializerOptions{WriteIndented=true}));Message="配置已导出（不含密码）。";}return Task.CompletedTask;});
         selected=Profiles.FirstOrDefault(p=>p.Id==Data.Settings.DefaultProfileId)??Profiles.FirstOrDefault();Load();

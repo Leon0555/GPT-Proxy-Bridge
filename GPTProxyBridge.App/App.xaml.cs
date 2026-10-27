@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -34,9 +35,22 @@ public partial class App : Application
             };tray.ContextMenuStrip=menu;
             SystemEvents.UserPreferenceChanged+=(_,_)=>Dispatcher.InvokeAsync(()=>SetTheme(vm.Theme));
             if(vm.Profiles.Count==0)vm.Message="直接填写代理信息后保存，或点击“导入旧脚本配置”选择已有脚本。";
+            vm.UpdateAvailable+=PromptForUpdate;
+            _=vm.CheckForUpdates(false);
         } catch(Exception ex){MessageBox.Show(ex.Message,"GPT Proxy Bridge 启动失败");Shutdown(1);}
     }
     void ShowWindow(){MainWindow.Show();MainWindow.WindowState=WindowState.Normal;MainWindow.Activate();}
+    void PromptForUpdate(UpdateCheckResult result)
+    {
+        if(Exiting||Dispatcher.HasShutdownStarted)return;
+        string message=$"发现新版本 {result.LatestVersion}（当前版本 {result.CurrentVersion}）。\n\n是否打开 GitHub 发布页面？更新需要自行下载和安装。";
+        var answer=MainWindow is {IsVisible:true} window
+            ?MessageBox.Show(window,message,"发现新版本",MessageBoxButton.YesNo,MessageBoxImage.Information)
+            :MessageBox.Show(message,"发现新版本",MessageBoxButton.YesNo,MessageBoxImage.Information);
+        if(answer!=MessageBoxResult.Yes)return;
+        try{Process.Start(new ProcessStartInfo(UpdateChecker.ReleasesUrl){UseShellExecute=true});}
+        catch{MessageBox.Show("无法打开浏览器，请手动访问 GitHub 项目发布页面。","打开失败",MessageBoxButton.OK,MessageBoxImage.Warning);}
+    }
     void ExitApp(){if(vm?.Busy==true){MessageBox.Show("连接操作正在进行，请稍候再退出。","GPT Proxy Bridge");return;}if(vm!=null&&(!vm.PrepareExit()||!vm.Stop()))return;Exiting=true;tray?.Dispose();Shutdown();}
     protected override void OnExit(ExitEventArgs e){tray?.Dispose();vm?.Engine.Dispose();wake?.Dispose();mutex?.Dispose();base.OnExit(e);}
     public void SetTheme(string choice)
