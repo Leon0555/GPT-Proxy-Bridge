@@ -51,7 +51,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public Array Protocols=>Enum.GetValues(typeof(ProxyProtocol));
     public bool Busy{get=>busy;set{Set(ref busy,value);Notify(nameof(Available));NotifyProfileState();}}
     public bool Available=>!Busy;
-    public bool SettingsVisible{get=>settings;set{Set(ref settings,value);if(value&&testMessageId.HasValue){Message="外观即时保存；连接设置修改后请点击“保存设置”。";testMessageId=null;}Notify(nameof(EditorVisible));NotifyProfileState();}}
+    public bool SettingsVisible{get=>settings;set{bool entering=value&&!settings,leaving=!value&&settings;Set(ref settings,value);if(entering){if(!Message.StartsWith("最近连接错误：",StringComparison.Ordinal))Message="连接设置修改后请点击“保存设置”。";testMessageId=null;}else if(leaving&&Message=="连接设置修改后请点击“保存设置”。")Message=selected==null?"填写配置后点击保存即可。":"选择配置后可测试或应用。";Notify(nameof(EditorVisible));NotifyProfileState();}}
     public bool EditorVisible=>!settings;
     public string Message{get=>message;set=>Set(ref message,value);}
     string loadedPassword="";
@@ -62,7 +62,10 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public bool IsBridgeRunning=>Engine.Status.Running;
     public string RuntimeText {get {var s=Engine.Status;return s.Running?$"本地桥接运行中 · 127.0.0.1:{s.Port}  /  {s.Connections} 条连接":"本地桥接未启动";}}
     public string ActiveText=>Engine.Status.Running && Engine.Status.ActiveName is { } n?$"生效配置：{n} · 旧连接 {Engine.Status.OldConnections} 条":"生效配置：无";
-    public string AppText=>Launcher.OwnedRunning?"ChatGPT/Codex应用运行中 · 由本软件启动":Launcher.HasRunning(Data.Settings.AppPath)?"ChatGPT/Codex应用已运行 · 未由本软件启动":"ChatGPT/Codex应用未运行";
+    bool appRunning,appOwned;
+    public bool IsAppRunning=>appRunning;
+    public string AppText=>appRunning?"ChatGPT/Codex应用已运行":"ChatGPT/Codex应用未运行";
+    public string AppSourceText=>!appRunning?"":appOwned?"由本软件启动":"未由本软件启动";
     public string DefaultText=>Selected!=null && Data.Settings.DefaultProfileId==Selected.Id?"默认配置":"设为默认";
     public Guid? ActiveProfileId=>Engine.Status.Running?activeId:null;
     public Guid? DefaultProfileId=>Data.Settings.DefaultProfileId;
@@ -101,6 +104,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         ExportCommand=new AsyncCommand(()=>{var dialog=new Microsoft.Win32.SaveFileDialog{Filter="JSON 配置|*.json",FileName="GPT-Proxy-Bridge-profiles.json"};if(dialog.ShowDialog()==true){var safe=new Configuration{Profiles=Profiles.Select(x=>x with{CredentialReference=""}).ToList(),Settings=new AppSettings{DefaultProfileId=Data.Settings.DefaultProfileId,LocalPort=Data.Settings.LocalPort,Bypass=Data.Settings.Bypass}};File.WriteAllText(dialog.FileName,System.Text.Json.JsonSerializer.Serialize(safe,new System.Text.Json.JsonSerializerOptions{WriteIndented=true}));Message="配置已导出（不含密码）。";}return Task.CompletedTask;});
         selected=Profiles.FirstOrDefault(p=>p.Id==Data.Settings.DefaultProfileId)??Profiles.FirstOrDefault();Load();
         Engine.Error+=error=>Application.Current.Dispatcher.InvokeAsync(()=>Message="最近连接错误："+error);
+        Refresh();
     }
     Guid? activeId;
     void Load(){if(selected!=null){name=selected.Name;host=selected.Host;port=selected.Port.ToString();username=selected.Username;auth=selected.Authentication;protocol=selected.Protocol;timeout=selected.TimeoutSeconds.ToString();try{password=store.ReadPassword(selected);}catch{password="";Message="无法读取此配置密码，请重新填写后保存。";}loadedPassword=password;}else{name="";host="127.0.0.1";port="7890";username="";auth=false;protocol=ProxyProtocol.HTTP;timeout="20";password="";loadedPassword="";}foreach(var property in new[]{nameof(ProfileName),nameof(Host),nameof(Port),nameof(Username),nameof(Authentication),nameof(Protocol),nameof(Timeout),nameof(Password),nameof(Dirty),nameof(DefaultText)})Notify(property);EditorChanged();}
@@ -153,5 +157,5 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public bool Stop(){if(Engine.Status.Connections>0 && MessageBox.Show("停止代理会中断现有网络连接，但不会关闭 ChatGPT/Codex应用。继续？","停止代理",MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return false;Engine.Stop();Message="代理已停止。";Refresh();return true;}
     void SaveSettings(){if(!int.TryParse(LocalPort,out int p)||p is <1 or >65535)throw new IOException("本地端口必须为 1–65535。");if(Bypass.Contains('\r')||Bypass.Contains('\n'))throw new IOException("绕过列表必须在一行内，以逗号分隔。");Data.Settings.LocalPort=p;Data.Settings.Bypass=Bypass.Trim();Data.Settings.AppPath=AppPath.Trim();Data.Settings.Theme=Theme;Persist();LocalPort=p.ToString();Bypass=Data.Settings.Bypass;AppPath=Data.Settings.AppPath;SettingsChanged();((App)Application.Current).SetTheme(Theme);Message="设置已保存。端口或绕过列表变更需退出并重新启动ChatGPT/Codex应用。";}
     async Task Import(){var dialog=new Microsoft.Win32.OpenFileDialog{Filter="旧启动脚本|*.ps1",FileName="Start-Codex-Proxy-Remote-Bridge.ps1",InitialDirectory=Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)};if(dialog.ShowDialog()!=true)return;var(p,pass)=await Launcher.Import(dialog.FileName);p=p with{CredentialReference=store.SavePassword(p.Id,pass)};Profiles.Add(p);SelectWithoutPrompt(p);SettingsVisible=false;Data.Settings.DefaultProfileId??=p.Id;Persist();Message="旧配置已导入并加密保存；原脚本未改动。";}
-    public void Refresh(){Notify(nameof(RuntimeText));Notify(nameof(IsBridgeRunning));Notify(nameof(ActiveText));Notify(nameof(AppText));Notify(nameof(ActiveProfileId));NotifyProfileState();}
+    public void Refresh(){appOwned=Launcher.OwnedRunning;appRunning=appOwned||Launcher.HasRunning(Data.Settings.AppPath);Notify(nameof(RuntimeText));Notify(nameof(IsBridgeRunning));Notify(nameof(ActiveText));Notify(nameof(IsAppRunning));Notify(nameof(AppText));Notify(nameof(AppSourceText));Notify(nameof(ActiveProfileId));NotifyProfileState();}
 }

@@ -33,6 +33,9 @@ Copy-Item -LiteralPath (Join-Path $output 'GPT Proxy Bridge.exe') -Destination $
 foreach($file in @('README.md','LICENSE','THIRD-PARTY-NOTICES.md','VERIFICATION.md','CHANGELOG.md')){
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package -Force
 }
+$images=Join-Path $package 'docs\images'
+New-Item -ItemType Directory -Path $images -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'docs\images\screenshot-light.png') -Destination $images -Force
 $zip=Join-Path $PSScriptRoot "release\GPT-Proxy-Bridge-$version-win-x64.zip"
 Compress-Archive -LiteralPath $package -DestinationPath $zip -Force
 $hash=Get-FileHash -LiteralPath $zip -Algorithm SHA256

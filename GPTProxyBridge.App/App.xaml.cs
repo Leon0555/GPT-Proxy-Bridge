@@ -47,6 +47,8 @@ public partial class App : Application
         for(int i=0;i<keys.Length;i++)Resources[keys[i]]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors[i]));
         Resources["SuccessBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#62D98C":"#17733A"));
         Resources["WarningBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#F4C36B":"#8A5A00"));
-        if(SystemParameters.HighContrast){Resources["BackgroundBrush"]=SystemColors.WindowBrush;Resources["SidebarBrush"]=SystemColors.WindowBrush;Resources["CardBrush"]=SystemColors.WindowBrush;Resources["TextBrush"]=SystemColors.WindowTextBrush;Resources["MutedBrush"]=SystemColors.WindowTextBrush;Resources["LineBrush"]=SystemColors.WindowTextBrush;Resources["AccentBrush"]=SystemColors.HighlightBrush;Resources["SuccessBrush"]=SystemColors.WindowTextBrush;Resources["WarningBrush"]=SystemColors.WindowTextBrush;}
+        Resources["PrimaryBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString("#145FCB"));
+        Resources["PrimaryTextBrush"]=System.Windows.Media.Brushes.White;
+        if(SystemParameters.HighContrast){Resources["BackgroundBrush"]=SystemColors.WindowBrush;Resources["SidebarBrush"]=SystemColors.WindowBrush;Resources["CardBrush"]=SystemColors.WindowBrush;Resources["TextBrush"]=SystemColors.WindowTextBrush;Resources["MutedBrush"]=SystemColors.WindowTextBrush;Resources["LineBrush"]=SystemColors.WindowTextBrush;Resources["AccentBrush"]=SystemColors.HighlightBrush;Resources["PrimaryBrush"]=SystemColors.HighlightBrush;Resources["PrimaryTextBrush"]=SystemColors.HighlightTextBrush;Resources["SuccessBrush"]=SystemColors.WindowTextBrush;Resources["WarningBrush"]=SystemColors.WindowTextBrush;}
     }
 }

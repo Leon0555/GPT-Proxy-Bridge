@@ -40,6 +40,54 @@ internal static class Program
             Check(vm.Selected?.Id==id && vm.Password=="test-secret","authenticated repeated saves preserve password and selection");
 
             vm.Theme="Light";Pump();Capture(window,"02-profile-light");
+            var brand=(TextBlock)window.FindName("BrandTitle");
+            var bridgeTitle=(TextBlock)window.FindName("BridgeSectionTitle");
+            var appTitle=(TextBlock)window.FindName("AppSectionTitle");
+            var runtimeBar=(Border)window.FindName("RuntimeBar");
+            var profilesList=(ListBox)window.FindName("ProfilesList");
+            var firstProfile=(ListBoxItem)profilesList.ItemContainerGenerator.ContainerFromIndex(0);
+            var brandTop=brand.TranslatePoint(new Point(),window).Y;
+            var titleTop=bridgeTitle.TranslatePoint(new Point(),window).Y;
+            Check(titleTop>=brandTop && titleTop<brandTop+brand.ActualHeight
+                && Math.Abs(appTitle.TranslatePoint(new Point(),window).Y-titleTop)<1,
+                "status section titles align within brand title height");
+            Check(Math.Abs(runtimeBar.TranslatePoint(new Point(0,runtimeBar.ActualHeight-runtimeBar.BorderThickness.Bottom),window).Y
+                -firstProfile.TranslatePoint(new Point(),window).Y)<1,
+                "status divider aligns with first profile top edge");
+            var addressHelp=(Button)window.FindName("AddressHelp");
+            var authHelp=(Button)window.FindName("AuthenticationHelp");
+            Check(addressHelp.IsVisible && authHelp.IsVisible && addressHelp.ActualWidth==20 && authHelp.ActualWidth==20
+                && Equals(addressHelp.ToolTip,"支持本机、局域网、公网地址及域名")
+                && Equals(authHelp.ToolTip,"HTTP代理认证未加密，请勿在不安全的网络中使用。\n密码仅为当前 Windows 用户加密保存。")
+                && ToolTipService.GetShowsToolTipOnKeyboardFocus(addressHelp)==true
+                && ToolTipService.GetShowsToolTipOnKeyboardFocus(authHelp)==true,"compact help controls expose correct mouse and keyboard tooltips");
+            var shortActions=All<Button>(window).Where(b=>b.Command==vm.SaveCommand||b.Command==vm.DuplicateCommand||b.Command==vm.DefaultCommand||b.Command==vm.DeleteCommand||b.Command==vm.TestCommand||b.Command==vm.ApplyCommand||b.Command==vm.StopCommand).ToArray();
+            Check(shortActions.Length==7 && shortActions.All(b=>b.ActualWidth==84 && b.ActualHeight==36),"profile and connection short actions use the same dimensions");
+            var save=shortActions.Single(b=>b.Command==vm.SaveCommand);
+            var test=shortActions.Single(b=>b.Command==vm.TestCommand);
+            var host=FindNamed(window,"代理地址")!;
+            var profileName=FindNamed(window,"配置名称")!;
+            var profileCard=(Border)window.FindName("BasicProfileCard");
+            Check(Math.Abs(save.TranslatePoint(new Point(),window).X-test.TranslatePoint(new Point(),window).X)<1
+                && Math.Abs(save.TranslatePoint(new Point(),window).X-profileCard.TranslatePoint(new Point(),window).X)<1
+                && host.ActualHeight==36 && profileName.ActualHeight==36,"both action rows align with card edge and controls retain their height");
+            var combo=All<ComboBox>(window).Single();combo.ApplyTemplate();
+            var toggle=All<System.Windows.Controls.Primitives.ToggleButton>(combo).First();toggle.ApplyTemplate();
+            var box=(Border)toggle.Template.FindName("Box",toggle);
+            var hostBox=(TextBox)host;hostBox.ApplyTemplate();
+            var inputBorder=(Border)hostBox.Template.FindName("InputBorder",hostBox);
+            var passwordInput=(PasswordBox)window.FindName("SecretBox");passwordInput.ApplyTemplate();
+            var passwordBorder=(Border)passwordInput.Template.FindName("InputBorder",passwordInput);
+            Check(inputBorder.CornerRadius==box.CornerRadius && passwordBorder.CornerRadius==box.CornerRadius
+                && hostBox.Template.FindName("PART_ContentHost",hostBox)!=null && passwordInput.Template.FindName("PART_ContentHost",passwordInput)!=null,
+                "text and password inputs match protocol corners and retain editing hosts");
+            var textHost=(ScrollViewer)hostBox.Template.FindName("PART_ContentHost",hostBox);
+            var passwordHost=(ScrollViewer)passwordInput.Template.FindName("PART_ContentHost",passwordInput);
+            Check(textHost.ActualHeight>=30 && passwordHost.ActualHeight>=30,"text and password editing regions retain sufficient height");
+            var originalBorder=combo.BorderBrush;combo.BorderBrush=System.Windows.Media.Brushes.Magenta;Pump();
+            Check(box.BorderBrush==System.Windows.Media.Brushes.Magenta,"protocol dropdown visible border follows focus brush");
+            combo.BorderBrush=originalBorder;Pump();
+            Check(All<TextBlock>(combo).Any(t=>t.Text=="⌄" && t.Foreground.ToString()==app.Resources["TextBrush"].ToString()),"protocol dropdown arrow follows theme text color");
             var eye=(System.Windows.Controls.Primitives.ToggleButton)window.FindName("PasswordReveal");
             var masked=(PasswordBox)window.FindName("SecretBox");
             var plain=(TextBox)window.FindName("PlainSecret");
@@ -116,13 +164,34 @@ internal static class Program
             if(string.IsNullOrEmpty(fixture))throw new Exception("Set GPT_PB_FIXTURE_EXE to the built launch fixture.");
             var fixtureDirectory=Path.Combine(directory,"launch");
             Environment.SetEnvironmentVariable("GPT_PB_LAUNCH_TEST_DIR",fixtureDirectory);
-            var launcher=new Launcher();
+            var launcher=vm.Launcher;
+            vm.Data.Settings.AppPath=fixture;
+            var externalVm=new MainViewModel(Path.Combine(directory,"external-app-status"));
+            externalVm.Data.Settings.AppPath=fixture;
             try {
                 Task.Run(()=>launcher.Launch(new AppSettings{AppPath=fixture},7995)).GetAwaiter().GetResult();
                 Check(launcher.OwnedRunning&&!launcher.LastReusedExisting,"fully exited desktop can be launched with bridge remaining active");
+                vm.Refresh();Pump();
+                var appRuntime=(TextBlock)window.FindName("AppRuntimeLabel");
+                var appSource=(TextBlock)window.FindName("AppSourceInfo");
+                var activeInfo=(TextBlock)window.FindName("ActiveProfileInfo");
+                Check(vm.IsAppRunning && vm.AppText=="ChatGPT/Codex应用已运行" && vm.AppSourceText=="由本软件启动"
+                    && appRuntime.Foreground.ToString()==app.Resources["SuccessBrush"].ToString(),"owned application status is green with separate source text");
+                Check(appSource.FontSize==activeInfo.FontSize && appSource.Foreground.ToString()==activeInfo.Foreground.ToString()
+                    && Math.Abs(appSource.TranslatePoint(new Point(),window).Y-activeInfo.TranslatePoint(new Point(),window).Y)<1,
+                    "application source matches active-profile font, color and baseline");
+                externalVm.Refresh();
+                Check(externalVm.IsAppRunning && externalVm.AppSourceText=="未由本软件启动","externally started application source is distinguished");
+                vm.Theme="Dark";Pump();
+                Check(appRuntime.Foreground.ToString()==app.Resources["SuccessBrush"].ToString(),"running application status uses dark-theme success color");
+                Capture(window,"06-app-running-dark");
+                vm.Theme="Light";Pump();
                 Task.Run(()=>launcher.Launch(new AppSettings{AppPath=fixture},7995)).GetAwaiter().GetResult();
                 Check(launcher.LastReusedExisting&&File.Exists(Path.Combine(fixtureDirectory,"reopened")),"windowless background instance receives reopen request instead of running error");
-            } finally {if(launcher.OwnedRunning)launcher.OwnedProcess!.Kill();Environment.SetEnvironmentVariable("GPT_PB_LAUNCH_TEST_DIR",null);}
+                launcher.OwnedProcess!.Kill();launcher.OwnedProcess.WaitForExit();vm.Refresh();Pump();
+                Check(!vm.IsAppRunning && vm.AppText=="ChatGPT/Codex应用未运行" && vm.AppSourceText==""
+                    && appRuntime.Foreground.ToString()==app.Resources["MutedBrush"].ToString(),"exited application returns to neutral status");
+            } finally {if(launcher.OwnedRunning)launcher.OwnedProcess!.Kill();externalVm.Engine.Dispose();Environment.SetEnvironmentVariable("GPT_PB_LAUNCH_TEST_DIR",null);}
             Console.WriteLine($"RESULT: {passed} UI / launch regression checks passed");
             return 0;
         } catch(Exception ex){Console.Error.WriteLine(ex);return 1;}
@@ -188,14 +257,28 @@ internal static class Program
             var nav=(Button)window.FindName("SettingsNavigation");
             var row=(ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(vm.Selected!);row.ApplyTemplate();
             var chrome=(Border)row.Template.FindName("Row",row);
-            Check(!feedback.IsVisible&&nav.Background.ToString()==Application.Current.Resources["AccentBrush"].ToString()
+            Check(!feedback.IsVisible&&nav.Background.ToString()==Application.Current.Resources["PrimaryBrush"].ToString()
                 &&chrome.BorderThickness==new Thickness(0),"settings marks current page, clears profile highlight and hides test feedback");
+            Check(!vm.Message.Contains("点击“应用配置”"),"settings does not show profile-specific save guidance");
+            var settingsMessage=(TextBlock)window.FindName("SettingsConnectionMessage");
+            var connectionTitle=(TextBlock)window.FindName("ConnectionTitle");
+            var connectionBar=(Border)window.FindName("ConnectionBar");
+            var appearance=(FrameworkElement)window.FindName("AppearanceButtons");
+            var importButton=All<Button>(window).Single(b=>b.Command==vm.ImportCommand);
+            Check(settingsMessage.IsVisible && settingsMessage.Text==vm.Message
+                && Math.Abs(settingsMessage.TranslatePoint(new Point(),window).Y-connectionTitle.TranslatePoint(new Point(),window).Y)<1,
+                "settings guidance appears beside connection title");
+            Check(Math.Abs(nav.TranslatePoint(new Point(0,nav.ActualHeight),window).Y-connectionBar.TranslatePoint(new Point(),window).Y)<1
+                && Math.Abs((appearance.TranslatePoint(new Point(),window).Y-nav.TranslatePoint(new Point(0,nav.ActualHeight),window).Y)
+                    -(nav.TranslatePoint(new Point(),window).Y-importButton.TranslatePoint(new Point(0,importButton.ActualHeight),window).Y))<1,
+                "settings bottom aligns with connection divider and sidebar gaps match");
             vm.LocalPort="7996";Pump();
             Check(vm.SettingsDirty&&vm.SaveSettingsCommand.CanExecute(null),"connection setting edit shows unsaved state and enables save");
             vm.Theme="Dark";Pump();
             Check(vm.SettingsDirty&&vm.Data.Settings.LocalPort!=7996,"instant theme save does not silently save connection settings");
             vm.Selected=vm.Selected;Pump();
             Check(vm.EditorVisible&&vm.SettingsDirty&&vm.LocalPort=="7996","settings draft survives navigation back to profile");
+            Check(!vm.Message.Contains("连接设置修改后请点击"),"settings-only guidance clears when returning to a profile");
             vm.SettingsCommand.Execute(null);Pump();vm.SaveSettingsCommand.Execute(null);Pump();
             Check(!vm.SettingsDirty&&!vm.SaveSettingsCommand.CanExecute(null)&&vm.Data.Settings.LocalPort==7996,"saving connection settings clears dirty marker");
             vm.Selected=vm.Selected;vm.Data.Settings.LocalPort=0;
