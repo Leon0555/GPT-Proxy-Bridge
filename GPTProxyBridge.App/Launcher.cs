@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
@@ -40,7 +39,7 @@ public sealed class Launcher
         using var p=Process.Start(info) ?? throw new IOException("无法启动安装包查询。");
         Task<string> output=p.StandardOutput.ReadToEndAsync(), error=p.StandardError.ReadToEndAsync();
         try{await p.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20));}catch{p.Kill(true);throw new IOException("系统查询超时。");}
-        if(p.ExitCode!=0)throw new IOException("系统查询或旧凭据读取失败，请手动配置。");
+        if(p.ExitCode!=0)throw new IOException("系统查询失败，请手动配置。");
         await error;return (await output).Trim();
     }
     public async Task<string> Discover(string manual)
@@ -80,19 +79,5 @@ public sealed class Launcher
         OwnedProcess?.Dispose();OwnedProcess=started;
         if(OwnedProcess.HasExited)throw new IOException("ChatGPT/Codex应用启动后立即退出，请检查所选路径或启动兼容性。");
         LaunchPort=port;LaunchBypass=settings.Bypass;
-    }
-    public static async Task<(ProxyProfile Profile,string Password)> Import(string script)
-    {
-        string source=await File.ReadAllTextAsync(script);
-        var host=Regex.Match(source,@"\$ProxyHost\s*=\s*['"" ]([^'""\r\n]+)['""]");
-        var port=Regex.Match(source,@"\$ProxyPort\s*=\s*['"" ]?(\d+)");
-        if(!host.Success||!port.Success)throw new IOException("无法解析旧脚本中的代理地址与端口。");
-        string file=Path.Combine(Path.GetDirectoryName(script)!,"proxy-credential.clixml");
-        if(!File.Exists(file))throw new IOException("未找到旧版加密凭据，请手动填写认证信息。");
-        string escaped=file.Replace("'","''");
-        string json=await PowerShell("$c=Import-Clixml -LiteralPath '"+escaped+"'; @{Username=$c.UserName;Password=$c.GetNetworkCredential().Password}|ConvertTo-Json -Compress");
-        using var data=JsonDocument.Parse(json);
-        var p=new ProxyProfile{Name="原代理配置",Host=host.Groups[1].Value.Trim(),Port=int.Parse(port.Groups[1].Value),Authentication=true,Username=data.RootElement.GetProperty("Username").GetString()??"",Protocol=host.Groups[1].Value.StartsWith("https:")?ProxyProtocol.HTTPS:ProxyProtocol.HTTP};
-        return(p.Normalize(),data.RootElement.GetProperty("Password").GetString()??"");
     }
 }

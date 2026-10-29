@@ -10,6 +10,8 @@ using GPTProxyBridge.Core;
 
 internal static partial class Program
 {
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    static extern int DwmGetWindowAttribute(IntPtr hwnd,int attribute,out int value,int size);
     [STAThread]
     static int Main()
     {
@@ -17,7 +19,8 @@ internal static partial class Program
         using(var source=Assembly.GetExecutingAssembly().GetManifestResourceStream("AppStyles.xml")!) {
             var doc=System.Xml.Linq.XDocument.Load(source);
             var elements=doc.Root!.Elements().First().Elements();
-            app.Resources=(ResourceDictionary)System.Windows.Markup.XamlReader.Parse("<ResourceDictionary xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\">"+string.Concat(elements)+"</ResourceDictionary>");
+            string xaml=string.Concat(elements).Replace("clr-namespace:GPTProxyBridge.App","clr-namespace:GPTProxyBridge.App;assembly=GPT Proxy Bridge");
+            app.Resources=(ResourceDictionary)System.Windows.Markup.XamlReader.Parse("<ResourceDictionary xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" xmlns:local=\"clr-namespace:GPTProxyBridge.App;assembly=GPT Proxy Bridge\">"+xaml+"</ResourceDictionary>");
         }
         var directory=Path.Combine(Path.GetTempPath(),"GPTProxyBridge-ui-"+Guid.NewGuid());
         var vm=new MainViewModel(directory,probe:_=>Task.FromResult(new ProbeResult(true,new[]{new ProbeStep("地址解析",true,"本机模拟结果"),new ProbeStep("代理连接",true,"模拟连接成功"),new ProbeStep("目标 HTTPS",true,"模拟 HTTP 401")})));
@@ -46,14 +49,30 @@ internal static partial class Program
             var runtimeBar=(Border)window.FindName("RuntimeBar");
             var profilesList=(ListBox)window.FindName("ProfilesList");
             var firstProfile=(ListBoxItem)profilesList.ItemContainerGenerator.ContainerFromIndex(0);
+            firstProfile.ApplyTemplate();
+            var profileRow=(Border)firstProfile.Template.FindName("Row",firstProfile);
+            Check(profileRow.Background.ToString()==app.Resources["SelectionBrush"].ToString()
+                && profileRow.BorderThickness==new Thickness(0) && firstProfile.FocusVisualStyle!=null,
+                "selected profile uses neutral fill and preserves keyboard focus visual");
             var brandTop=brand.TranslatePoint(new Point(),window).Y;
             var titleTop=bridgeTitle.TranslatePoint(new Point(),window).Y;
-            Check(titleTop>=brandTop && titleTop<brandTop+brand.ActualHeight
+            Check(Math.Abs(titleTop-brandTop-4)<1
                 && Math.Abs(appTitle.TranslatePoint(new Point(),window).Y-titleTop)<1,
                 "status section titles align within brand title height");
-            Check(Math.Abs(runtimeBar.TranslatePoint(new Point(0,runtimeBar.ActualHeight-runtimeBar.BorderThickness.Bottom),window).Y
-                -firstProfile.TranslatePoint(new Point(),window).Y)<1,
-                "status divider aligns with first profile top edge");
+            var runtimeDivider=(Border)window.FindName("RuntimeDivider");
+            var connectionDivider=(Border)window.FindName("ConnectionDivider");
+            Check(runtimeBar.Parent is Grid && ((Grid)runtimeBar.Parent).Parent is DockPanel,
+                "right-side status, editor and controls share a smooth card");
+            Check(Math.Abs(runtimeDivider.TranslatePoint(new Point(),window).Y-firstProfile.TranslatePoint(new Point(),window).Y)<1,
+                "first profile aligns with upper divider");
+            Check(Math.Abs(runtimeDivider.Margin.Left-24)<0.01 && runtimeDivider.Margin==connectionDivider.Margin
+                && Math.Abs(runtimeDivider.ActualWidth-connectionDivider.ActualWidth)<1,
+                "both dividers share inset and width");
+            var originalRuntimePadding=runtimeBar.Padding;
+            runtimeBar.Padding=new Thickness(originalRuntimePadding.Left,originalRuntimePadding.Top+15,originalRuntimePadding.Right,originalRuntimePadding.Bottom);Pump();
+            Check(Math.Abs(runtimeDivider.TranslatePoint(new Point(),window).Y-firstProfile.TranslatePoint(new Point(),window).Y)<1,
+                "first profile follows changes in status area height");
+            runtimeBar.Padding=originalRuntimePadding;Pump();
             var addressHelp=(Button)window.FindName("AddressHelp");
             var authHelp=(Button)window.FindName("AuthenticationHelp");
             Check(addressHelp.IsVisible && authHelp.IsVisible && addressHelp.ActualWidth==20 && authHelp.ActualWidth==20
@@ -65,6 +84,15 @@ internal static partial class Program
             Check(shortActions.Length==7 && shortActions.All(b=>b.ActualWidth==84 && b.ActualHeight==36),"profile and connection short actions use the same dimensions");
             var save=shortActions.Single(b=>b.Command==vm.SaveCommand);
             var test=shortActions.Single(b=>b.Command==vm.TestCommand);
+            var mouseOverKey=(DependencyPropertyKey)typeof(UIElement).GetField("IsMouseOverPropertyKey",BindingFlags.Static|BindingFlags.NonPublic)!.GetValue(null)!;
+            save.SetValue(mouseOverKey,true);Pump();save.ApplyTemplate();
+            var hoveredChrome=(Border)save.Template.FindName("Chrome",save);
+            Check(hoveredChrome.Background.ToString()==app.Resources["PrimaryHoverBrush"].ToString()
+                && save.Foreground.ToString()==app.Resources["PrimaryTextBrush"].ToString(),"light primary button stays dark and white in hover state");
+            save.ClearValue(mouseOverKey);test.SetValue(mouseOverKey,true);Pump();test.ApplyTemplate();
+            var normalChrome=(Border)test.Template.FindName("Chrome",test);
+            Check(normalChrome.Background.ToString()==app.Resources["SelectionBrush"].ToString(),"ordinary button uses neutral hover state");
+            test.ClearValue(mouseOverKey);Pump();
             var host=FindNamed(window,"代理地址")!;
             var profileName=FindNamed(window,"配置名称")!;
             var profileCard=(Border)window.FindName("BasicProfileCard");
@@ -81,6 +109,10 @@ internal static partial class Program
             Check(inputBorder.CornerRadius==box.CornerRadius && passwordBorder.CornerRadius==box.CornerRadius
                 && hostBox.Template.FindName("PART_ContentHost",hostBox)!=null && passwordInput.Template.FindName("PART_ContentHost",passwordInput)!=null,
                 "text and password inputs match protocol corners and retain editing hosts");
+            save.ApplyTemplate();
+            Check(inputBorder is SmoothBorder && box is SmoothBorder && passwordBorder is SmoothBorder
+                && profileCard is SmoothBorder && save.Template.FindName("Chrome",save) is SmoothBorder,
+                "cards, inputs, dropdown and buttons share smooth corner rendering");
             var textHost=(ScrollViewer)hostBox.Template.FindName("PART_ContentHost",hostBox);
             var passwordHost=(ScrollViewer)passwordInput.Template.FindName("PART_ContentHost",passwordInput);
             Check(textHost.ActualHeight>=30 && passwordHost.ActualHeight>=30,"text and password editing regions retain sufficient height");
@@ -92,6 +124,12 @@ internal static partial class Program
                 && Math.Abs(arrow.TranslatePoint(new Point(0,arrow.ActualHeight/2),box).Y-box.ActualHeight/2)<0.5,
                 "protocol dropdown arrow is vertically centered and follows theme text color");
             var eye=(System.Windows.Controls.Primitives.ToggleButton)window.FindName("PasswordReveal");
+            eye.ApplyTemplate();addressHelp.ApplyTemplate();
+            var defaultBadge=All<Border>(firstProfile).Single(b=>Equals(b.ToolTip,"默认配置"));
+            Check(profileRow is SmoothBorder && defaultBadge is SmoothBorder
+                && eye.Template.FindName("Chrome",eye) is SmoothBorder
+                && addressHelp.Template.FindName("FocusRing",addressHelp) is SmoothBorder,
+                "sidebar, default badge, eye and help focus use smooth corners");
             var masked=(PasswordBox)window.FindName("SecretBox");
             var plain=(TextBox)window.FindName("PlainSecret");
             eye.IsChecked=true;Pump();
@@ -102,27 +140,61 @@ internal static partial class Program
             var eyeOffset=eye.TranslatePoint(new Point(),field);
             Check(eyeOffset.X>0 && eyeOffset.X+eye.ActualWidth<=field.ActualWidth && masked.Padding.Right>=eye.ActualWidth,"eye stays inside password field with text clearance");
             vm.Password="test-secret";vm.Save();Pump();
-            var modes=All<RadioButton>(window).Where(b=>b.GroupName=="SidebarAppearance").ToArray();
+            var modes=All<RadioButton>(window).Where(b=>b.GroupName=="SettingsAppearance").ToArray();
             Check(modes.Length==3 && modes.All(b=>b.ToolTip!=null),"three appearance icon controls provide hover labels");
             foreach(var mode in new[]{"Light","Dark","System"}) {
                 modes.Single(b=>Equals(b.Tag,mode)).SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty,true);Pump();
                 Check(vm.Theme==mode && new ConfigurationStore(directory).Load().Settings.Theme==mode
-                    && All<RadioButton>(window).Count(b=>Equals(b.Tag,mode)&&b.IsChecked==true)==2,"appearance "+mode+" persists and synchronizes both locations");
+                    && All<RadioButton>(window).Count(b=>Equals(b.Tag,mode)&&b.IsChecked==true)==1,"appearance "+mode+" persists in settings");
+                var selectedTheme=modes.Single(b=>Equals(b.Tag,mode));selectedTheme.ApplyTemplate();
+                var themeChrome=(Border)selectedTheme.Template.FindName("Chrome",selectedTheme);
+                Check(themeChrome is SmoothBorder && selectedTheme.Template.FindName("FocusMark",selectedTheme) is SmoothBorder,
+                    "theme control and focus use smooth corners in "+mode);
+                Check(themeChrome.Background.ToString()==app.Resources["SelectionBrush"].ToString()
+                    && themeChrome.BorderBrush.ToString()==app.Resources["SelectionBrush"].ToString()
+                    && selectedTheme.Foreground.ToString()==app.Resources["TextBrush"].ToString(),"selected theme uses neutral colors in "+mode);
                 Check(arrow.Stroke.ToString()==app.Resources["TextBrush"].ToString()
                     && Math.Abs(arrow.TranslatePoint(new Point(0,arrow.ActualHeight/2),box).Y-box.ActualHeight/2)<0.5,
                     "protocol dropdown arrow remains centered and visible in "+mode);
+                Check(profileRow.Background.ToString()==app.Resources["SelectionBrush"].ToString()
+                    && profileRow.BorderThickness==new Thickness(0),"selected profile uses neutral fill in "+mode);
             }
+            var appearanceToggle=(System.Windows.Controls.Primitives.ToggleButton)window.FindName("AppearanceToggle");
+            var appearancePopup=(System.Windows.Controls.Primitives.Popup)window.FindName("AppearancePopup");
+            appearanceToggle.IsChecked=true;Pump();
+            var popupModes=All<RadioButton>((DependencyObject)appearancePopup.Child).ToArray();
+            Check(appearancePopup.IsOpen && popupModes.Length==3,"appearance popup displays three choices");
+            foreach(var item in popupModes){item.ApplyTemplate();var check=(System.Windows.Shapes.Path)item.Template.FindName("CheckMark",item);var content=(ContentPresenter)All<ContentPresenter>(item).First();check.SetValue(UIElement.VisibilityProperty,Visibility.Visible);Pump();
+                Check(Math.Abs(check.TranslatePoint(new Point(0,check.ActualHeight/2),item).Y-content.TranslatePoint(new Point(0,content.ActualHeight/2),item).Y)<1,
+                    "appearance menu checkmark and label align for "+item.Content);check.ClearValue(UIElement.VisibilityProperty);Pump();}
+            var popupAudit=Environment.GetEnvironmentVariable("GPT_PB_AUDIT_DIR");
+            if(!string.IsNullOrEmpty(popupAudit)){var popupRoot=(FrameworkElement)appearancePopup.Child;popupRoot.UpdateLayout();Directory.CreateDirectory(popupAudit);var bitmap=new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(popupRoot.ActualWidth),(int)Math.Ceiling(popupRoot.ActualHeight),96,96,System.Windows.Media.PixelFormats.Pbgra32);bitmap.Render(popupRoot);var encoder=new System.Windows.Media.Imaging.PngBitmapEncoder();encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));using var file=File.Create(Path.Combine(popupAudit,"appearance-menu.png"));encoder.Save(file);}
+
+            popupModes.Single(b=>Equals(b.Tag,"Dark")).SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty,true);Pump();
+            Check(vm.Theme=="Dark" && modes.Single(b=>Equals(b.Tag,"Dark")).IsChecked==true,"popup choice synchronizes settings appearance");
+            popupModes.Single(b=>Equals(b.Tag,"Dark")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));Pump();
+            Check(!appearancePopup.IsOpen,"appearance popup closes after selection");
+            vm.Theme="Light";Pump();
+            profilesList.ApplyTemplate();
+            var addProfile=(Button)profilesList.Template.FindName("AddProfileButton",profilesList);
+            Check(addProfile!=null && addProfile.Command==vm.AddCommand && Equals(addProfile.ToolTip,"新增配置"),"add profile icon remains in the list and invokes existing command");
             var runtime=(TextBlock)window.FindName("RuntimeLabel");
             vm.Busy=false;vm.Refresh();Pump();
             Check(runtime.Foreground.ToString()==app.Resources["MutedBrush"].ToString(),"stopped runtime uses muted status color");
             vm.Busy=true;Pump();
-            Check(runtime.Foreground.ToString()==app.Resources["WarningBrush"].ToString(),"pending runtime uses amber status color");
+            Check(runtime.Foreground.ToString()==app.Resources["WarningBrush"].ToString(),"pending runtime uses neutral status color");
             vm.Engine.Apply(vm.Selected!,"test-secret");vm.Engine.Start(0);vm.Refresh();Pump();
-            Check(runtime.Foreground.ToString()==app.Resources["SuccessBrush"].ToString(),"running runtime stays green while operation is busy");
+            Check(runtime.Foreground.ToString()==app.Resources["AppStatusBrush"].ToString(),"running runtime stays blue while operation is busy");
+            var currentProfileRow=(ListBoxItem)profilesList.ItemContainerGenerator.ContainerFromIndex(0);
+            var activeDot=All<System.Windows.Shapes.Ellipse>(currentProfileRow).Single(e=>Equals(e.ToolTip,"正在使用"));
+            Check(activeDot.Fill.ToString()==runtime.Foreground.ToString(),"active profile dot matches runtime color");
+            var matcher=new ProfileIdMatches();
+            Check((bool)matcher.Convert(new object[]{id,id},typeof(bool),null!,System.Globalization.CultureInfo.InvariantCulture)
+                && !(bool)matcher.Convert(new object[]{id,Guid.NewGuid()},typeof(bool),null!,System.Globalization.CultureInfo.InvariantCulture),"profile indicators distinguish matching IDs");
             vm.Busy=false;
             foreach(var mode in new[]{"Light","Dark"}) {
                 vm.Theme=mode;Pump();
-                Check(runtime.Foreground.ToString()==app.Resources["SuccessBrush"].ToString(),"running status follows "+mode+" palette");
+                Check(runtime.Foreground.ToString()==app.Resources["AppStatusBrush"].ToString(),"running status follows "+mode+" palette");
             }
             vm.Engine.Stop();vm.Refresh();Pump();
             Check(runtime.Foreground.ToString()==app.Resources["MutedBrush"].ToString(),"stopping resets status color");
@@ -137,6 +209,9 @@ internal static partial class Program
 
             window.Width=1000;window.Height=780;Pump();
             Console.WriteLine($"Layout: scroll={editor.ScrollableHeight}, viewport={editor.ViewportHeight}, extent={editor.ExtentHeight}");Check(editor.ScrollableHeight<1,"authenticated editor fits minimum window without scrolling");
+            var resizedProfile=(ListBoxItem)profilesList.ItemContainerGenerator.ContainerFromIndex(0);
+            Check(Math.Abs(runtimeDivider.TranslatePoint(new Point(),window).Y-resizedProfile.TranslatePoint(new Point(),window).Y)<1,
+                "first profile stays aligned at minimum window size");
             window.Width=1060;window.Height=800;Pump();
             vm.Busy=false;vm.Data.Settings.LocalPort=0;vm.ApplySelected(false).GetAwaiter().GetResult();Pump();
             var preview=Environment.GetEnvironmentVariable("GPT_PB_PREVIEW");
@@ -156,6 +231,12 @@ internal static partial class Program
             Check(vm.Profiles.Count==2 && vm.Selected?.Id!=id,"new draft saves as separate selected profile");
             vm.SettingsCommand.Execute(null);Pump();vm.SettingsCommand.Execute(null);Pump();
             Check(vm.SettingsVisible,"settings navigation remains on settings when clicked twice");Capture(window,"04-settings-light");
+            var localPort=FindNamed(window,"本地监听端口")!;
+            var bypass=FindNamed(window,"绕过列表")!;
+            Check(localPort.ActualWidth==170 && Math.Abs(localPort.TranslatePoint(new Point(),window).Y-bypass.TranslatePoint(new Point(),window).Y)<1
+                && bypass.TranslatePoint(new Point(),window).X>=localPort.TranslatePoint(new Point(localPort.ActualWidth,0),window).X,
+                "settings port and bypass fields align in a compact row");
+            vm.Theme="Dark";Pump();Capture(window,"08-settings-dark");vm.Theme="Light";Pump();
             list.UpdateLayout();list.ScrollIntoView(vm.Selected);window.UpdateLayout();Pump();
             var selectedItem=(ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(vm.Selected!);
             selectedItem.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice,0,System.Windows.Input.MouseButton.Left){RoutedEvent=System.Windows.UIElement.PreviewMouseLeftButtonUpEvent});Pump();
@@ -183,14 +264,24 @@ internal static partial class Program
                 var appSource=(TextBlock)window.FindName("AppSourceInfo");
                 var activeInfo=(TextBlock)window.FindName("ActiveProfileInfo");
                 Check(vm.IsAppRunning && vm.AppText=="ChatGPT/Codex应用已运行" && vm.AppSourceText=="由本软件启动"
-                    && appRuntime.Foreground.ToString()==app.Resources["SuccessBrush"].ToString(),"owned application status is green with separate source text");
+                    && window.FindName("AppSourceIcon")==null
+                    && appRuntime.Foreground.ToString()==app.Resources["AppStatusBrush"].ToString(),"owned application status is blue with source text and no icon");
                 Check(appSource.FontSize==activeInfo.FontSize && appSource.Foreground.ToString()==activeInfo.Foreground.ToString()
                     && Math.Abs(appSource.TranslatePoint(new Point(),window).Y-activeInfo.TranslatePoint(new Point(),window).Y)<1,
                     "application source matches active-profile font, color and baseline");
                 externalVm.Refresh();
                 Check(externalVm.IsAppRunning && externalVm.AppSourceText=="未由本软件启动","externally started application source is distinguished");
                 vm.Theme="Dark";Pump();
-                Check(appRuntime.Foreground.ToString()==app.Resources["SuccessBrush"].ToString(),"running application status uses dark-theme success color");
+                Check(appRuntime.Foreground.ToString()==app.Resources["AppStatusBrush"].ToString(),"running application status uses dark-theme accent color");
+                if(Environment.OSVersion.Version.Build>=22000 && !SystemParameters.HighContrast){
+                    var hwnd=new System.Windows.Interop.WindowInteropHelper(window).Handle;
+                    int captionResult=DwmGetWindowAttribute(hwnd,20,out var darkCaption,sizeof(int));
+                    Console.WriteLine($"DWM dark result={captionResult:X8} value={darkCaption:X8}");
+                    Check(captionResult==0 && darkCaption==1,"dark theme applies dark native title bar");
+                    vm.Theme="Light";Pump();
+                    Check(DwmGetWindowAttribute(hwnd,20,out var lightCaption,sizeof(int))==0 && lightCaption==0,"light theme restores native title bar mode");
+                    vm.Theme="Dark";Pump();
+                }
                 Capture(window,"06-app-running-dark");
                 vm.Theme="Light";Pump();
                 Task.Run(()=>launcher.Launch(new AppSettings{AppPath=fixture},7995)).GetAwaiter().GetResult();
@@ -225,6 +316,7 @@ internal static partial class Program
             Check(All<Button>(window).Where(b=>b.Command==vm.DeleteCommand||b.Command==vm.ApplyCommand).All(b=>!b.IsEnabled),"WPF buttons reflect unavailable actions");
             vm.ProfileName="已保存A";vm.Port="18888";vm.Save();Pump();var first=vm.Selected!;
             Check(vm.CanApplyProfile&&vm.HasPendingApply&&vm.ProfileStateText=="已保存，待应用","saved profile has persistent pending state");
+            Check(!((TextBlock)window.FindName("ProfileStateLabel")).IsVisible,"saved pending apply label is hidden");
             vm.AddCommand.Execute(null);Pump();vm.ProfileName="不能丢的草稿";vm.Host="example.com";Pump();
             answers.Enqueue(MessageBoxResult.Cancel);list.SelectedItem=first;Pump();
             Check(vm.Selected==null&&list.SelectedItem==null&&vm.ProfileName=="不能丢的草稿"&&vm.Host=="example.com","cancelled list navigation preserves draft and restores selection");
@@ -264,21 +356,17 @@ internal static partial class Program
             var nav=(Button)window.FindName("SettingsNavigation");
             var row=(ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(vm.Selected!);row.ApplyTemplate();
             var chrome=(Border)row.Template.FindName("Row",row);
-            Check(!feedback.IsVisible&&nav.Background.ToString()==Application.Current.Resources["PrimaryBrush"].ToString()
+            Check(!feedback.IsVisible&&nav.Command==vm.SettingsCommand
                 &&chrome.BorderThickness==new Thickness(0),"settings marks current page, clears profile highlight and hides test feedback");
             Check(!vm.Message.Contains("点击“应用配置”"),"settings does not show profile-specific save guidance");
             var settingsMessage=(TextBlock)window.FindName("SettingsConnectionMessage");
             var connectionTitle=(TextBlock)window.FindName("ConnectionTitle");
             var connectionBar=(Border)window.FindName("ConnectionBar");
             var appearance=(FrameworkElement)window.FindName("AppearanceButtons");
-            var importButton=All<Button>(window).Single(b=>b.Command==vm.ImportCommand);
             Check(settingsMessage.IsVisible && settingsMessage.Text==vm.Message
                 && Math.Abs(settingsMessage.TranslatePoint(new Point(),window).Y-connectionTitle.TranslatePoint(new Point(),window).Y)<1,
                 "settings guidance appears beside connection title");
-            Check(Math.Abs(nav.TranslatePoint(new Point(0,nav.ActualHeight),window).Y-connectionBar.TranslatePoint(new Point(),window).Y)<1
-                && Math.Abs((appearance.TranslatePoint(new Point(),window).Y-nav.TranslatePoint(new Point(0,nav.ActualHeight),window).Y)
-                    -(nav.TranslatePoint(new Point(),window).Y-importButton.TranslatePoint(new Point(0,importButton.ActualHeight),window).Y))<1,
-                "settings bottom aligns with connection divider and sidebar gaps match");
+            Check(nav.ActualWidth==32 && appearance.ActualWidth>32,"compact settings and appearance controls share the sidebar footer");
             vm.LocalPort="7996";Pump();
             Check(vm.SettingsDirty&&vm.SaveSettingsCommand.CanExecute(null),"connection setting edit shows unsaved state and enables save");
             vm.Theme="Dark";Pump();

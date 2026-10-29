@@ -14,6 +14,7 @@ public partial class App : Application
 {
     Mutex? mutex; EventWaitHandle? wake; Forms.NotifyIcon? tray; MainViewModel? vm;
     public bool Exiting{get;private set;}
+    internal bool IsDarkTheme{get;private set;}
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -34,7 +35,7 @@ public partial class App : Application
                 menu.Items.Add("连接并启动 ChatGPT/Codex",null,(_,_)=>Dispatcher.Invoke(()=>vm.LaunchCommand.Execute(null)));menu.Items.Add("打开 ChatGPT/Codex",null,(_,_)=>Dispatcher.Invoke(()=>vm.OpenAppCommand.Execute(null)));menu.Items.Add("停止代理",null,(_,_)=>Dispatcher.Invoke(()=>vm.StopCommand.Execute(null)));menu.Items.Add(new Forms.ToolStripSeparator());menu.Items.Add("退出",null,(_,_)=>Dispatcher.Invoke(ExitApp));
             };tray.ContextMenuStrip=menu;
             SystemEvents.UserPreferenceChanged+=(_,_)=>Dispatcher.InvokeAsync(()=>SetTheme(vm.Theme));
-            if(vm.Profiles.Count==0)vm.Message="直接填写代理信息后保存，或点击“导入旧脚本配置”选择已有脚本。";
+            if(vm.Profiles.Count==0)vm.Message="直接填写代理信息后保存，或点击“＋”新增配置。";
             vm.UpdateAvailable+=PromptForUpdate;
             _=vm.CheckForUpdates(false);
         } catch(Exception ex){MessageBox.Show(ex.Message,"GPT Proxy Bridge 启动失败");Shutdown(1);}
@@ -56,13 +57,20 @@ public partial class App : Application
     public void SetTheme(string choice)
     {
         bool dark=choice=="Dark" || choice=="System" && (int?)(Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize","AppsUseLightTheme",1))==0;
-        var colors=dark?new[]{"#1C1C1F","#242427","#2C2C30","#F1F1F4","#AFB0BA","#45454D","#3785F7"}:new[]{"#F6F6F8","#ECECF0","#FFFFFF","#202126","#626570","#DCDDE3","#146EF5"};
+        IsDarkTheme=dark && !SystemParameters.HighContrast;
+        var colors=dark?new[]{"#191A1D","#212225","#28292D","#F1F2F4","#B5B9C0","#44474D","#85AAD8"}:new[]{"#FFFFFF","#F4F5F7","#F8F9FA","#202328","#59616C","#DDE0E4","#4777B5"};
         string[] keys=["BackgroundBrush","SidebarBrush","CardBrush","TextBrush","MutedBrush","LineBrush","AccentBrush"];
         for(int i=0;i<keys.Length;i++)Resources[keys[i]]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors[i]));
         Resources["SuccessBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#62D98C":"#17733A"));
-        Resources["WarningBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#F4C36B":"#8A5A00"));
-        Resources["PrimaryBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString("#145FCB"));
-        Resources["PrimaryTextBrush"]=System.Windows.Media.Brushes.White;
-        if(SystemParameters.HighContrast){Resources["BackgroundBrush"]=SystemColors.WindowBrush;Resources["SidebarBrush"]=SystemColors.WindowBrush;Resources["CardBrush"]=SystemColors.WindowBrush;Resources["TextBrush"]=SystemColors.WindowTextBrush;Resources["MutedBrush"]=SystemColors.WindowTextBrush;Resources["LineBrush"]=SystemColors.WindowTextBrush;Resources["AccentBrush"]=SystemColors.HighlightBrush;Resources["PrimaryBrush"]=SystemColors.HighlightBrush;Resources["PrimaryTextBrush"]=SystemColors.HighlightTextBrush;Resources["SuccessBrush"]=SystemColors.WindowTextBrush;Resources["WarningBrush"]=SystemColors.WindowTextBrush;}
+        Resources["AppStatusBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#85AAD8":"#4777B5"));
+        Resources["WarningBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#B5B9C0":"#59616C"));
+        Resources["PrimaryBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#E6E8EC":"#202328"));
+        Resources["FocusBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#AAB3C0":"#77808C"));
+        Resources["PrimaryHoverBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#CBD0D7":"#3A3E45"));
+        Resources["PrimaryTextBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#202328":"#FFFFFF"));
+        Resources["InputBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#222428":"#FFFFFF"));
+        Resources["SelectionBrush"]=new SolidColorBrush((Color)ColorConverter.ConvertFromString(dark?"#3A3D43":"#E7E9EC"));
+        if(SystemParameters.HighContrast){Resources["BackgroundBrush"]=SystemColors.WindowBrush;Resources["SidebarBrush"]=SystemColors.WindowBrush;Resources["CardBrush"]=SystemColors.WindowBrush;Resources["InputBrush"]=SystemColors.WindowBrush;Resources["TextBrush"]=SystemColors.WindowTextBrush;Resources["MutedBrush"]=SystemColors.WindowTextBrush;Resources["LineBrush"]=SystemColors.WindowTextBrush;Resources["AccentBrush"]=SystemColors.HighlightBrush;Resources["PrimaryBrush"]=SystemColors.HighlightBrush;Resources["PrimaryTextBrush"]=SystemColors.HighlightTextBrush;Resources["PrimaryHoverBrush"]=SystemColors.HighlightBrush;Resources["FocusBrush"]=SystemColors.WindowTextBrush;Resources["SelectionBrush"]=SystemColors.ControlBrush;Resources["SuccessBrush"]=SystemColors.WindowTextBrush;Resources["AppStatusBrush"]=SystemColors.WindowTextBrush;Resources["WarningBrush"]=SystemColors.WindowTextBrush;}
+        foreach(Window window in Windows)if(window is MainWindow main)main.ApplyTitleBarTheme(IsDarkTheme);
     }
 }

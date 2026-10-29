@@ -38,7 +38,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         SelectWithoutPrompt(value);
         if(value!=null)SettingsVisible=false;
     }}
-    string name="",host="127.0.0.1",port="7890",username="",password="",timeout="20",message="添加配置，或导入已有的代理设置。"; bool auth,busy,settings;
+    string name="",host="127.0.0.1",port="7890",username="",password="",timeout="20",message="填写代理配置后保存。"; bool auth,busy,settings;
     ProxyProtocol protocol;
     public string ProfileName{get=>name;set{Set(ref name,value);EditorChanged();}}
     public string Host{get=>host;set{Set(ref host,value);EditorChanged();}}
@@ -69,7 +69,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public string DefaultText=>Selected!=null && Data.Settings.DefaultProfileId==Selected.Id?"默认配置":"设为默认";
     public Guid? ActiveProfileId=>Engine.Status.Running?activeId:null;
     public Guid? DefaultProfileId=>Data.Settings.DefaultProfileId;
-    public ICommand OpenAppCommand{get;} public ICommand AddCommand{get;} public ICommand SaveCommand{get;} public ICommand DuplicateCommand{get;} public ICommand DeleteCommand{get;} public ICommand DefaultCommand{get;} public ICommand TestCommand{get;} public ICommand ApplyCommand{get;} public ICommand LaunchCommand{get;} public ICommand StopCommand{get;} public ICommand SettingsCommand{get;} public ICommand SaveSettingsCommand{get;} public ICommand ImportCommand{get;} public ICommand ExportCommand{get;}
+    public ICommand OpenAppCommand{get;} public ICommand AddCommand{get;} public ICommand SaveCommand{get;} public ICommand DuplicateCommand{get;} public ICommand DeleteCommand{get;} public ICommand DefaultCommand{get;} public ICommand TestCommand{get;} public ICommand ApplyCommand{get;} public ICommand LaunchCommand{get;} public ICommand StopCommand{get;} public ICommand SettingsCommand{get;} public ICommand SaveSettingsCommand{get;} public ICommand ExportCommand{get;}
     public MainViewModel(string directory, Func<string,MessageBoxResult>? confirmUnsaved=null, Func<ProxySnapshot,Task<ProbeResult>>? probe=null, Func<Task<UpdateCheckResult>>? updateCheck=null)
     {
         this.confirmUnsaved=confirmUnsaved ?? (text=>MessageBox.Show(text,"未保存的配置",MessageBoxButton.YesNoCancel,MessageBoxImage.Question));
@@ -102,7 +102,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         SettingsCommand=new AsyncCommand(()=>{SettingsVisible=true;return Task.CompletedTask;},()=>Available);
         SaveSettingsCommand=new AsyncCommand(()=>{SaveSettings();return Task.CompletedTask;},()=>Available && SettingsDirty);
         CheckUpdatesCommand=new AsyncCommand(()=>CheckForUpdates(true),()=>!UpdateChecking);
-        ImportCommand=new AsyncCommand(async()=>{if(TryLeaveEditor("导入配置"))await Run(Import);},()=>Available);
         ExportCommand=new AsyncCommand(()=>{var dialog=new Microsoft.Win32.SaveFileDialog{Filter="JSON 配置|*.json",FileName="GPT-Proxy-Bridge-profiles.json"};if(dialog.ShowDialog()==true){var safe=new Configuration{Profiles=Profiles.Select(x=>x with{CredentialReference=""}).ToList(),Settings=new AppSettings{DefaultProfileId=Data.Settings.DefaultProfileId,LocalPort=Data.Settings.LocalPort,Bypass=Data.Settings.Bypass}};File.WriteAllText(dialog.FileName,System.Text.Json.JsonSerializer.Serialize(safe,new System.Text.Json.JsonSerializerOptions{WriteIndented=true}));Message="配置已导出（不含密码）。";}return Task.CompletedTask;});
         selected=Profiles.FirstOrDefault(p=>p.Id==Data.Settings.DefaultProfileId)??Profiles.FirstOrDefault();Load();
         Engine.Error+=error=>Application.Current.Dispatcher.InvokeAsync(()=>Message="最近连接错误："+error);
@@ -158,6 +157,5 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public async Task ApplyProfile(ProxyProfile p){if(Busy)return;Selected=p;if(Selected?.Id==p.Id)await ApplySelected(false);}
     public bool Stop(){if(Engine.Status.Connections>0 && MessageBox.Show("停止代理会中断现有网络连接，但不会关闭 ChatGPT/Codex应用。继续？","停止代理",MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return false;Engine.Stop();Message="代理已停止。";Refresh();return true;}
     void SaveSettings(){if(!int.TryParse(LocalPort,out int p)||p is <1 or >65535)throw new IOException("本地端口必须为 1–65535。");if(Bypass.Contains('\r')||Bypass.Contains('\n'))throw new IOException("绕过列表必须在一行内，以逗号分隔。");Data.Settings.LocalPort=p;Data.Settings.Bypass=Bypass.Trim();Data.Settings.AppPath=AppPath.Trim();Data.Settings.Theme=Theme;Persist();LocalPort=p.ToString();Bypass=Data.Settings.Bypass;AppPath=Data.Settings.AppPath;SettingsChanged();((App)Application.Current).SetTheme(Theme);Message="设置已保存。端口或绕过列表变更需退出并重新启动ChatGPT/Codex应用。";}
-    async Task Import(){var dialog=new Microsoft.Win32.OpenFileDialog{Filter="旧启动脚本|*.ps1",FileName="Start-Codex-Proxy-Remote-Bridge.ps1",InitialDirectory=Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)};if(dialog.ShowDialog()!=true)return;var(p,pass)=await Launcher.Import(dialog.FileName);p=p with{CredentialReference=store.SavePassword(p.Id,pass)};Profiles.Add(p);SelectWithoutPrompt(p);SettingsVisible=false;Data.Settings.DefaultProfileId??=p.Id;Persist();Message="旧配置已导入并加密保存；原脚本未改动。";}
     public void Refresh(){appOwned=Launcher.OwnedRunning;appRunning=appOwned||Launcher.HasRunning(Data.Settings.AppPath);Notify(nameof(RuntimeText));Notify(nameof(IsBridgeRunning));Notify(nameof(ActiveText));Notify(nameof(IsAppRunning));Notify(nameof(AppText));Notify(nameof(AppSourceText));Notify(nameof(ActiveProfileId));NotifyProfileState();}
 }

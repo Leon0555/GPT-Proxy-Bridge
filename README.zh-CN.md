@@ -49,7 +49,7 @@ ChatGPT/Codex 中遵循代理设置的请求
 | 托盘 | 关闭窗口继续运行；可打开窗口、切换配置、启动应用、停止或退出 |
 | 凭据 | Windows 当前用户 DPAPI 加密，本地保存 |
 | 更新检查 | 启动时自动检查，也可在设置中手动检查；发现新版本后可打开 GitHub 发布页 |
-| 迁移 | 导入特定旧脚本格式；配置 JSON 可导出，目前无 JSON 导入入口 |
+| 配置导出 | 可导出不含密码的 JSON；目前无配置导入入口 |
 
 不支持系统代理接管、VPN/TUN、订阅管理、自动测速、云同步、自动下载安装更新、NTLM、Kerberos 或 PAC。
 
@@ -120,7 +120,6 @@ HTTPS 上游表示“到代理服务器这一段使用 TLS”。HTTP Basic 只�
 - 复制程序不会迁移个人配置；加密密码不能直接跨电脑或用户使用。
 - 公开问题报告不要附上未脱敏的配置、代理地址、用户名、密码或截图。
 
-旧脚本导入只解析支持的文本格式，并读取同目录 `proxy-credential.clixml`，不执行启动脚本，也不删除原文件。加密凭据需在原 Windows 用户环境中读取。
 
 ## 技术与构建
 
@@ -132,7 +131,7 @@ dotnet run --project .\GPTProxyBridge.Tests\GPTProxyBridge.Tests.csproj -c Relea
 dotnet publish .\GPTProxyBridge.App\GPTProxyBridge.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\release\app
 ```
 
-默认核心测试不读取真实代理凭据、不依赖目标应用安装。追加 `-- --installed` 可测试本机安装包发现；追加 `-- --live` 时必须显式设置 `GPT_PB_LEGACY_SCRIPT` 指向旧脚本，才会读取本机凭据并发起真实网络检测。
+默认核心测试不读取真实代理凭据、不依赖目标应用安装。追加 `-- --installed` 可测试本机安装包发现。
 
 执行 `./build.ps1 -Test` 可运行核心及 WPF 界面测试，并生成带版本号的发布包；需要交互式 Windows 桌面。界面测试使用临时配置及模拟目标程序，不关闭真实 ChatGPT/Codex。
 

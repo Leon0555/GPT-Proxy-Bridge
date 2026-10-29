@@ -90,7 +90,7 @@ public sealed partial class MainViewModel
     void InvalidateCommands()
     {
         foreach(var command in new ICommand?[]{AddCommand,SaveCommand,DuplicateCommand,DeleteCommand,DefaultCommand,TestCommand,
-            ApplyCommand,LaunchCommand,OpenAppCommand,StopCommand,SettingsCommand,SaveSettingsCommand,ImportCommand,ExportCommand}.OfType<AsyncCommand>())
+            ApplyCommand,LaunchCommand,OpenAppCommand,StopCommand,SettingsCommand,SaveSettingsCommand,ExportCommand}.OfType<AsyncCommand>())
             command.RaiseCanExecuteChanged();
     }
 
